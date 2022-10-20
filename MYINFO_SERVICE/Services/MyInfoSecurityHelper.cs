@@ -6,10 +6,10 @@ using Org.BouncyCastle.Crypto.Parameters;
 using Org.BouncyCastle.OpenSsl;
 using System;
 using System.Collections.Generic;
+using System.IdentityModel.Tokens.Jwt;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
-using static Jose.Jwk;
 
 namespace MYINFO_SERVICE.Services
 {
@@ -109,6 +109,8 @@ namespace MYINFO_SERVICE.Services
                 throw new SingpassException("Missing JWE data.");
             }
 
+            var jwtSecToken = new JwtSecurityTokenHandler().ReadJwtToken(jwe);
+
             var file = Path.Combine(Directory.GetCurrentDirectory(), "Resources/private-key.pem");
             jweDecryptKey = File.ReadAllText(file);
 
@@ -118,10 +120,18 @@ namespace MYINFO_SERVICE.Services
                 throw new SingpassException("Missing key to decrypt JWE payload.");
             }
 
+            // keeping only the payload of the key 
+            jweDecryptKey = jweDecryptKey.Replace("-----BEGIN PRIVATE KEY-----", "");
+            jweDecryptKey = jweDecryptKey.Replace("-----END PRIVATE KEY-----", "");
+            byte[] privateKeyRaw = Convert.FromBase64String(jweDecryptKey);
+            // creating the RSA key 
+            RSACryptoServiceProvider provider = new RSACryptoServiceProvider();
+            provider.ImportPkcs8PrivateKey(new ReadOnlySpan<byte>(privateKeyRaw), out _);
+            RsaSecurityKey rsaSecurityKey = new RsaSecurityKey(provider);
+
+            //var jwtDecrypt = JWT.Decode(jwe, rsaSecurityKey, JweAlgorithm.RSA_OAEP, JweEncryption.A128CBC_HS256);
+
             var key = PemToJwk(jweDecryptKey);
-
-            //var jwtDecrypt = JWT.Decode(jwe, jweDecryptKey, JweAlgorithm.RSA_OAEP, JweEncryption.A128CBC_HS256);
-
             return key;
         }
 
@@ -155,30 +165,6 @@ namespace MYINFO_SERVICE.Services
             }
 
             return jwk;
-        }
-
-        public static string DecryptString(string key, string cipherText)
-        {
-            byte[] iv = new byte[16];
-            byte[] buffer = Convert.FromBase64String(cipherText);
-
-            using (Aes aes = Aes.Create())
-            {
-                aes.Key = Encoding.UTF8.GetBytes(key);
-                aes.IV = iv;
-                ICryptoTransform decryptor = aes.CreateDecryptor(aes.Key, aes.IV);
-
-                using (MemoryStream memoryStream = new MemoryStream(buffer))
-                {
-                    using (CryptoStream cryptoStream = new CryptoStream((Stream)memoryStream, decryptor, CryptoStreamMode.Read))
-                    {
-                        using (StreamReader streamReader = new StreamReader((Stream)cryptoStream))
-                        {
-                            return streamReader.ReadToEnd();
-                        }
-                    }
-                }
-            }
         }
     }
 }
