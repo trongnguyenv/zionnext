@@ -1,0 +1,10 @@
+C:\Users\OS\Documents\ZIONNEXT\MYINFO_SERVICE\obj\Debug\netcoreapp3.1\MYINFO_SERVICE.csproj.AssemblyReference.cache
+C:\Users\OS\Documents\ZIONNEXT\MYINFO_SERVICE\obj\Debug\netcoreapp3.1\MYINFO_SERVICE.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\OS\Documents\ZIONNEXT\MYINFO_SERVICE\obj\Debug\netcoreapp3.1\MYINFO_SERVICE.AssemblyInfoInputs.cache
+C:\Users\OS\Documents\ZIONNEXT\MYINFO_SERVICE\obj\Debug\netcoreapp3.1\MYINFO_SERVICE.AssemblyInfo.cs
+C:\Users\OS\Documents\ZIONNEXT\MYINFO_SERVICE\obj\Debug\netcoreapp3.1\MYINFO_SERVICE.csproj.CoreCompileInputs.cache
+C:\Users\OS\Documents\ZIONNEXT\MYINFO_SERVICE\bin\Debug\netcoreapp3.1\MYINFO_SERVICE.deps.json
+C:\Users\OS\Documents\ZIONNEXT\MYINFO_SERVICE\bin\Debug\netcoreapp3.1\MYINFO_SERVICE.dll
+C:\Users\OS\Documents\ZIONNEXT\MYINFO_SERVICE\bin\Debug\netcoreapp3.1\MYINFO_SERVICE.pdb
+C:\Users\OS\Documents\ZIONNEXT\MYINFO_SERVICE\obj\Debug\netcoreapp3.1\MYINFO_SERVICE.dll
+C:\Users\OS\Documents\ZIONNEXT\MYINFO_SERVICE\obj\Debug\netcoreapp3.1\MYINFO_SERVICE.pdb
