@@ -1,13 +1,10 @@
-﻿using Jose;
-using Microsoft.IdentityModel.Tokens;
-using MYINFO_SERVICE.Exceptions;
+﻿using MYINFO_SERVICE.Exceptions;
 using Newtonsoft.Json;
-using Org.BouncyCastle.Crypto.Parameters;
-using Org.BouncyCastle.OpenSsl;
 using System;
 using System.Collections.Generic;
 using System.IdentityModel.Tokens.Jwt;
 using System.IO;
+using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -100,71 +97,122 @@ namespace MYINFO_SERVICE.Services
             return Convert.FromBase64String(base64);
         }
 
-        public static string decryptJWE(string jwe)
+        public static string decryptJWE(string jweTokenBase64Url)
         {
-            string jweDecryptKey;
-            if (string.IsNullOrEmpty(jwe))
+            if (string.IsNullOrEmpty(jweTokenBase64Url))
             {
                 // Not authorised or something - either way cannot continue
                 throw new SingpassException("Missing JWE data.");
             }
 
-            var jwtSecToken = new JwtSecurityTokenHandler().ReadJwtToken(jwe);
+            var pathPrivateKey = Path.Combine(Directory.GetCurrentDirectory(), "Resources/private-key.pem");
+            var pathPublicKey = Path.Combine(Directory.GetCurrentDirectory(), "Resources/public-cert.pem");
 
-            var file = Path.Combine(Directory.GetCurrentDirectory(), "Resources/private-key.pem");
-            jweDecryptKey = File.ReadAllText(file);
+            string rsaPrivateKey = File.ReadAllText(pathPrivateKey);
+            string rsaPublicKey = File.ReadAllText(pathPublicKey);
 
-            if (string.IsNullOrEmpty(jweDecryptKey))
+            if (string.IsNullOrEmpty(rsaPrivateKey))
             {
                 // Not authorised or something - either way cannot continue
                 throw new SingpassException("Missing key to decrypt JWE payload.");
             }
 
-            // keeping only the payload of the key 
-            jweDecryptKey = jweDecryptKey.Replace("-----BEGIN PRIVATE KEY-----", "");
-            jweDecryptKey = jweDecryptKey.Replace("-----END PRIVATE KEY-----", "");
-            byte[] privateKeyRaw = Convert.FromBase64String(jweDecryptKey);
-            // creating the RSA key 
-            RSACryptoServiceProvider provider = new RSACryptoServiceProvider();
-            provider.ImportPkcs8PrivateKey(new ReadOnlySpan<byte>(privateKeyRaw), out _);
-            RsaSecurityKey rsaSecurityKey = new RsaSecurityKey(provider);
+            // decode JWE and Private key https://dotnetfiddle.net/30JFo0
+            string jweDecryptedPayload = jweRsaDecryptFromBase64UrlToken(rsaPrivateKey, jweTokenBase64Url);
+            Console.WriteLine("jweDecryptedPayload: " + jweDecryptedPayload);
 
-            //var jwtDecrypt = JWT.Decode(jwe, rsaSecurityKey, JweAlgorithm.RSA_OAEP, JweEncryption.A128CBC_HS256);
+            // verify Public key
+            //var rsaPublic = Decode(jweDecryptedPayload, rsaPublicKey);
+            var decodedJwt = Jose.JWT.Decode(jweDecryptedPayload, rsaPublicKey, Jose.JweAlgorithm.RSA_OAEP_256, Jose.JweEncryption.A128CBC_HS256);
 
-            var key = PemToJwk(jweDecryptKey);
-            return key;
+            // check for expired
+            Console.WriteLine("\ncheck for expired token");
+            Console.WriteLine("actual time: " + DateTime.Now);
+
+            var tokenInfo = GetTokenInfo(jweDecryptedPayload);
+
+            return jweDecryptedPayload;
+        }
+        public static string jweRsaDecryptFromBase64UrlToken(string rsaPrivateKey, string jweTokenBase64Url)
+        {
+            RSA rsaAlg = RSA.Create();
+            byte[] privateKeyByte = getRsaPrivateKeyEncodedFromPem(rsaPrivateKey);
+            int _out;
+            rsaAlg.ImportPkcs8PrivateKey(privateKeyByte, out _out);
+            string json = "";
+            try
+            {
+                json = Jose.JWT.Decode(jweTokenBase64Url, rsaAlg);
+            }
+            catch (Jose.EncryptionException)
+            {
+                Console.WriteLine("*** Error: payload corrupted or wrong private key ***");
+                // throws: Jose.EncryptionException: Unable to decrypt content or authentication tag do not match.
+            }
+            return json;
         }
 
-        public static string PemToJwk(string key)
+        private static byte[] getRsaPrivateKeyEncodedFromPem(string rsaPrivateKeyPem)
         {
-            string jwk;
+            string rsaPrivateKeyHeaderPem = "-----BEGIN PRIVATE KEY-----\n";
+            string rsaPrivateKeyFooterPem = "-----END PRIVATE KEY-----";
+            string rsaPrivateKeyDataPem = rsaPrivateKeyPem.Replace(rsaPrivateKeyHeaderPem, "").Replace(rsaPrivateKeyFooterPem, "").Replace("\n", "");
+            return FromBase64Url(rsaPrivateKeyDataPem);
+        }
 
-            using (var textReader = new StringReader(key))
+        //public static string Decode(string token, string key, bool verify = true)
+        //{
+        //    string[] parts = token.Split('.');
+        //    string header = parts[0];
+        //    string payload = parts[1];
+        //    byte[] crypto = FromBase64Url(parts[2]);
+
+        //    string headerJson = Encoding.UTF8.GetString(FromBase64Url(header));
+        //    JObject headerData = JObject.Parse(headerJson);
+
+        //    string payloadJson = Encoding.UTF8.GetString(FromBase64Url(payload));
+        //    JObject payloadData = JObject.Parse(payloadJson);
+
+        //    if (verify)
+        //    {
+        //        key = key.Replace("-----BEGIN CERTIFICATE-----", "");
+        //        key = key.Replace("-----END CERTIFICATE-----", "");
+        //        var keyBytes = Convert.FromBase64String(key);
+
+        //        AsymmetricKeyParameter asymmetricKeyParameter = PublicKeyFactory.CreateKey(keyBytes);
+        //        RsaKeyParameters rsaKeyParameters = (RsaKeyParameters)asymmetricKeyParameter;
+        //        RSAParameters rsaParameters = new RSAParameters();
+        //        rsaParameters.Modulus = rsaKeyParameters.Modulus.ToByteArrayUnsigned();
+        //        rsaParameters.Exponent = rsaKeyParameters.Exponent.ToByteArrayUnsigned();
+        //        RSACryptoServiceProvider rsa = new RSACryptoServiceProvider();
+        //        rsa.ImportParameters(rsaParameters);
+
+        //        SHA256 sha256 = SHA256.Create();
+        //        byte[] hash = sha256.ComputeHash(Encoding.UTF8.GetBytes(parts[0] + '.' + parts[1]));
+
+        //        RSAPKCS1SignatureDeformatter rsaDeformatter = new RSAPKCS1SignatureDeformatter(rsa);
+        //        rsaDeformatter.SetHashAlgorithm("SHA256");
+        //        if (!rsaDeformatter.VerifySignature(hash, FromBase64Url(parts[2])))
+        //            throw new ApplicationException(string.Format("Invalid signature"));
+        //    }
+
+        //    return payloadData.ToString();
+        //}
+
+        protected static Dictionary<string, string> GetTokenInfo(string token)
+        {
+            var TokenInfo = new Dictionary<string, string>();
+
+            var handler = new JwtSecurityTokenHandler();
+            var jwtSecurityToken = handler.ReadJwtToken(token);
+            var claims = jwtSecurityToken.Claims.ToList();
+
+            foreach (var claim in claims)
             {
-                var pubkeyReader = new PemReader(textReader);
-                RsaKeyParameters KeyParameters = (RsaKeyParameters)pubkeyReader.ReadObject();
-                var e = Base64UrlEncoder.Encode(KeyParameters.Exponent.ToByteArrayUnsigned());
-                var n = Base64UrlEncoder.Encode(KeyParameters.Modulus.ToByteArrayUnsigned());
-                var dict = new Dictionary<string, string>() {
-                        {"e", e},
-                        {"kty", "RSA"},
-                        {"n", n}
-                    };
-                var hash = SHA256.Create();
-                Byte[] hashBytes = hash.ComputeHash(Encoding.ASCII.GetBytes(JsonConvert.SerializeObject(dict)));
-                JsonWebKey jsonWebKey = new JsonWebKey()
-                {
-                    Kid = Base64UrlEncoder.Encode(hashBytes),
-                    Kty = "RSA",
-                    E = e,
-                    N = n
-                };
-                JsonWebKeySet jsonWebKeySet = new JsonWebKeySet();
-                jsonWebKeySet.Keys.Add(jsonWebKey);
-                jwk = JsonConvert.SerializeObject(jsonWebKeySet);
+                TokenInfo.Add(claim.Type, claim.Value);
             }
 
-            return jwk;
+            return TokenInfo;
         }
     }
 }
